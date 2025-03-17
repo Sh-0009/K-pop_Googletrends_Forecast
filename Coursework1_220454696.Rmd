@@ -1,0 +1,285 @@
+---
+title: "MTH6139 Time Series" 
+subtitle: "Coursework 1_220454696" 
+author: "Sujin Han" 
+date: "17/03/2025" 
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab 
+    highlight: tango
+---
+ 
+```{r, echo=FALSE}
+# This code will display the QMUL logo at the top right of the page
+htmltools::img(src = knitr::image_uri("images/QMlogo.png"),
+               alt = 'logo',
+               style = 'position:absolute; top:0; right:0; padding:10px; width:20%;')
+```
+
+# Introduction
+This coursework trains us how to predict data (time series) using the **Meta's Prophet** forecasting system.
+
+
+![](images/Prophet.png)
+
+
+This technique can be used to forecast many different types of time series, although data sets with more than 100 points are suggested for meaningful results.
+This page will use *K-pop Google Trends* data from the previous five years.
+
+As a Korean student in London, I believed that K-pop had positively enhanced awareness of Korea, making me feel more at ease while living in a foreign country.
+This motivated me to investigate the Google trend over the last five years, aroused my interest in what the future holds for the next six months.
+
+# Section 1: Meta's Prophet
+
+Let's try Meta's Prophet first to get familiar with it, as shown on the following page.
+
+<https://facebook.github.io/prophet/docs/quick_start.html#r-api>
+
+The process written in the site is as follows.
+
+> <font size="5">📘</font> **Note**
+>
+><font size="3">The following codes are the same as those given on the site above.
+>It is just for those who can't access the site.</font>
+
+```{r, message=FALSE, warning=FALSE}
+library("prophet")
+```
+```{r}
+df <- read.csv('https://raw.githubusercontent.com/facebook/prophet/main/examples/example_wp_log_peyton_manning.csv')
+
+n <- prophet(df, daily.seasonality=TRUE)
+
+future <- make_future_dataframe(n, periods = 365)
+# This takes the n and a number of periods 
+# to forecast and produces a suitable dataframe
+
+tail(future)
+
+forecast <- predict(n, future)
+
+tail(forecast[c('ds', 'yhat', 'yhat_lower', 'yhat_upper')])
+
+plot(n, forecast)
+
+prophet_plot_components(n, forecast)
+# Following command shows the forecast broken down into
+# trend, weekly seasonality, and yearly seasonality
+```
+```{r, message=FALSE, warning=FALSE}
+dyplot.prophet(n, forecast)
+
+```
+
+After this process, you can create the github page showing the works done.
+
+## Mathematical Model of Prophet
+
+Prophet decomposes a time series as $y(t) = g(t) + s(t) + h(t) + \epsilon_t$.
+
+Where:
+
+- \( g(t) \) meaning the *trend*
+- \( s(t) \) meaning *seasonality*
+- \( h(t) \) meaning *holiday effects* 
+- \( \epsilon_t \) meaning *error term* 
+
+
+# Section 2: Analysing the dataset using Prophet
+
+## 2.1 Dataset
+
+```{r, message=FALSE, warning=FALSE}
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+library(zoo)
+```
+
+- **Loading the dataset**
+```{r}
+Kpop <- read.csv("data/K-pop_Google Trends.csv", skip = 1, stringsAsFactors = FALSE)
+```
+
+- **Rename columns**
+```{r}
+colnames(Kpop) <- c("ds","y")
+```
+
+- **Converting date columns into yearmon format**
+
+> <font size="3">📘</font> **Note**
+>
+> <font size="2">This is just to see the dates in a vector form.</font>
+
+```{r}
+Kpop_ts <- ts(Kpop$ds, start = c(2020, 3), frequency = 52)
+
+dates <- time(Kpop_ts)
+dates <- as.yearmon(dates)
+```
+    
+Now, try the command below to check the result.
+    
+```{r, results="hide"}
+print(dates)
+```
+
+- **Converting yearmon format back to Date format**
+
+> <font size="3">📘</font> **Note**
+>
+> <font size="2">It is needed to apply the dataset into the Prophet.</font>
+
+```{r}
+Kpop$ds <- as.Date(Kpop$ds)
+```
+
+- **Structure of the data**
+```{r}
+str(Kpop)
+summary(Kpop)
+```
+
+- **Basic Plot**
+```{r}
+ggplot(Kpop, aes(x = ds, y = y)) +
+    geom_line(color = "magenta") +
+    labs(title = "K-pop Google Trends Worldwide Past 5 Years",
+         x = "Date", y = "Search Interest") + theme_minimal()
+```
+
+- **Seasonality**
+```{r}
+ts_Kpop <- ts(Kpop$y, start = c(2020, 12), frequency = 52)
+
+decomp <- decompose(ts_Kpop, type = "multiplicative")
+
+plot(decomp)
+```
+
+## 2.2 Apply Prophet Model
+
+```{r}
+#Empty the model
+model <- prophet()
+```
+
+- **Fit the model**
+
+```{r, message=FALSE, warning=FALSE}
+model <- fit.prophet(model, Kpop)
+```
+
+- **Future dataframe forecasting**
+
+```{r}
+# Next 6 months
+future <- make_future_dataframe(model, periods = 26, freq = "week")
+
+# Next 1 Year
+future1 <- make_future_dataframe(model, periods = 52, freq = "week")
+```
+
+- **Predictions**
+
+```{r}
+# Next 6 months
+forecast <- predict(model, future)
+
+# Next 1 Year
+forecast1 <- predict(model, future1)
+```
+
+- **Plot of Forecast**
+
+```{r}
+# For Next 1 Year
+plot(model, forecast1) + ggtitle("K-pop Google Trends Forecast")
+```
+
+- **Trend and Seasonality Analysis**
+
+```{r}
+# For next 1 Year
+prophet_plot_components(model, forecast1)
+```
+
+- **Linear Regression**
+
+```{r}
+lm_model <- lm(y ~ ds, data = Kpop)
+
+summary(lm_model)
+```
+
+- **Regression Line with Basic Plot of time series**
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(Kpop, aes(x = ds, y = y)) + geom_line(color = "magenta") + geom_smooth(method = "lm", color = "lightblue", se = FALSE) + labs(title = "K-pop Google Trends with Linear Trend",
+         x = "Date", y = "Search Interest") + theme_minimal()
+```
+
+# **Comments**
+
+## Basic Plot with Regression Line
+As shown in the graph above, the trend seems to vary a lot.
+
+To stick out some points:
+
+- The big K-pop group released songs during mid-2020, causing a sudden surge, and many new K-pop groups also debuted, such as *aespa* and *ENHYPEN*.
+
+- The graph seems to decrease during 2022, assuming the main reason for it is because of the announcement that the most popular group, *BTS*, is starting their military service.
+
+- Graph increases when the awards ceremony, such as *MAMA*, *MMA*, or *Grammy Awards*, is held.
+
+As shown above, the K-pop Google trend depends on:
+
+- Major K-pop Events or releases
+
+- Military Enlistment
+
+- Online concerts or events
+
+- etc.
+
+The linear trend line (light blue line) shows whether the trend is decreasing or increasing in the long term. This line seems to be decreasing. We don't know the exact reason, but we can assume it's because of *BTS*'s military service or other groups' scandals.
+
+
+## K-pop Google Trends Forecast
+
+- The impact of *BTS*'s and *BLACKPINK*'s global expansion can be seen in both increasing search volume from 2020 to 2021 and decreasing search volume from 2021 to 2023.
+- Search volume has increased and is expected to increase since 2023, with the assumption that:
+
+    - global success of new groups *(ex. 'Cupid' by FIFTY FIFTY, NewJeans)*
+    - K-pop's expansion into the fashion industry 
+    - Engagement of Social Media & Digital Platform 
+
+## Trend and Seasonality Analysis
+**Trend Analysis (First Graph)**
+
+- From 2020 to 2021: Sharp spike in interest, presumably due to the album release of two prominent groups.
+
+- From 2022 to 2024, the graph dropped, presumably due to *BTS*'s military enlistment.
+
+- From 2024 to 2026: The trend reverses, indicating that new groups and comebacks could revive interest.
+
+**Yearly Seasonality Analysis (Second Graph)**
+
+The graph shows seasonal tendencies.
+
+The graph increases when there are major award ceremonies and year-end festivals, and decreases when there are less major releases in the summer.
+
+For a promoter, it would be ideal to choose releases or promotions from October to December to gain more interest.
+
+# Conclusion
+
+This analysis used Prophet to forecast the K-pop Google trend.
+
+Based on what it showed:
+
+- K-pop has a strong seasonal pattern.
+
+- Interest rates decreased after 2022, but experts predict they will rise again in 2025.
